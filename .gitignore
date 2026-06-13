@@ -1,0 +1,34 @@
+# Node dependencies
+node_modules
+
+# Build output
+/dist
+/.vite
+
+# Environment files
+.env
+.env.*
+*.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# TypeScript build info
+*.tsbuildinfo
+
+# IDEs
+.vscode/
+.idea/
+.DS_Store
+
+# OS files
+Thumbs.db
+
+# Coverage
+coverage/
+
+
+.fake

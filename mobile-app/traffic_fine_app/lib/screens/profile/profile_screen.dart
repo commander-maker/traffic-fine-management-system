@@ -1,32 +1,54 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../core/constants/app_colors.dart';
 import '../auth/login_screen.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
-  // ── User info data (demo) ────────────────────────────────────────────────
-  static const _name = 'Kamal Perera';
-  static const _initials = 'KP';
-  static const _nic = 'NIC: 198823401234V · Vehicle: CAB-4821';
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
 
-  static const List<_InfoRow> _infoRows = [
-    _InfoRow(label: 'Full Name', value: 'Kamal Perera'),
-    _InfoRow(label: 'NIC Number', value: '198823401234V'),
-    _InfoRow(label: 'Driving Licence', value: 'B1234567'),
-    _InfoRow(label: 'Vehicle Number', value: 'CAB-4821'),
-    _InfoRow(label: 'Mobile', value: '+94 77 123 4567'),
-    _InfoRow(label: 'Email', value: 'kamal.p@email.com'),
-  ];
+class _ProfileScreenState extends State<ProfileScreen> {
+  final FlutterSecureStorage _storage = const FlutterSecureStorage();
+  String _name = 'Kamal Perera';
+  String _email = 'kamal.p@email.com';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfileData();
+  }
+
+  Future<void> _loadProfileData() async {
+    final name = await _storage.read(key: 'auth_name');
+    final email = await _storage.read(key: 'auth_email');
+    setState(() {
+      if (name != null && name.isNotEmpty) _name = name;
+      if (email != null && email.isNotEmpty) _email = email;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    final initials = _name.split(' ').map((p) => p.isNotEmpty ? p[0] : '').take(2).join().toUpperCase();
+
+    final List<_InfoRow> infoRows = [
+      _InfoRow(label: 'Full Name', value: _name),
+      _InfoRow(label: 'Email', value: _email),
+      const _InfoRow(label: 'NIC Number', value: '198823401234V'),
+      const _InfoRow(label: 'Driving Licence', value: 'B1234567'),
+      const _InfoRow(label: 'Vehicle Number', value: 'CAB-4821'),
+      const _InfoRow(label: 'Mobile', value: '+94 77 123 4567'),
+    ];
+
     return Scaffold(
       backgroundColor: AppColors.bgGrey,
       body: Column(
         children: [
           // ── Dark navy header ─────────────────────────────────────────────
-          _buildHeader(context),
+          _buildHeader(context, initials),
 
           // ── Info cards + Sign Out ────────────────────────────────────────
           Expanded(
@@ -34,7 +56,7 @@ class ProfileScreen extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
               child: Column(
                 children: [
-                  _buildInfoCard(),
+                  _buildInfoCard(infoRows),
                   const SizedBox(height: 20),
                   _buildSignOutButton(context),
                 ],
@@ -47,7 +69,7 @@ class ProfileScreen extends StatelessWidget {
   }
 
   // ── Header Section ────────────────────────────────────────────────────────
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildHeader(BuildContext context, String initials) {
     return Container(
       color: AppColors.primaryDark,
       width: double.infinity,
@@ -74,10 +96,10 @@ class ProfileScreen extends StatelessWidget {
                 ),
               ],
             ),
-            child: const Center(
+            child: Center(
               child: Text(
-                _initials,
-                style: TextStyle(
+                initials,
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
@@ -88,9 +110,9 @@ class ProfileScreen extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           // Name
-          const Text(
+          Text(
             _name,
-            style: TextStyle(
+            style: const TextStyle(
               color: Colors.white,
               fontSize: 20,
               fontWeight: FontWeight.bold,
@@ -99,7 +121,7 @@ class ProfileScreen extends StatelessWidget {
           const SizedBox(height: 5),
           // NIC + Vehicle
           Text(
-            _nic,
+            'NIC: 198823401234V · Vehicle: CAB-4821',
             style: TextStyle(
               color: Colors.white.withOpacity(0.65),
               fontSize: 12,
@@ -111,7 +133,7 @@ class ProfileScreen extends StatelessWidget {
   }
 
   // ── Info Card (all rows grouped) ─────────────────────────────────────────
-  Widget _buildInfoCard() {
+  Widget _buildInfoCard(List<_InfoRow> infoRows) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -125,10 +147,10 @@ class ProfileScreen extends StatelessWidget {
         ],
       ),
       child: Column(
-        children: _infoRows.asMap().entries.map((entry) {
+        children: infoRows.asMap().entries.map((entry) {
           final index = entry.key;
           final row = entry.value;
-          final isLast = index == _infoRows.length - 1;
+          final isLast = index == infoRows.length - 1;
 
           return Column(
             children: [
@@ -208,7 +230,9 @@ class ProfileScreen extends StatelessWidget {
                   ),
                 ),
                 TextButton(
-                  onPressed: () {
+                  onPressed: () async {
+                    await _storage.deleteAll();
+                    if (!mounted) return;
                     Navigator.of(ctx).pop();
                     Navigator.of(context).pushAndRemoveUntil(
                       MaterialPageRoute(builder: (_) => const LoginScreen()),

@@ -1,31 +1,110 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../core/constants/app_colors.dart';
+import '../../models/fine_model.dart';
+import '../../services/fine_service.dart';
+import '../fine/fine_search_screen.dart';
 import '../fine/fine_details_screen.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final FlutterSecureStorage _storage = const FlutterSecureStorage();
+  final FineService _fineService = FineService();
+
+  String _driverName = 'Driver';
+  String _vehicleNumber = 'CAB-4821';
+  double _outstandingFinesAmount = 0.0;
+  int _pendingCount = 0;
+  List<FineModel> _recentFines = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDashboardData();
+  }
+
+  Future<void> _loadDashboardData() async {
+    setState(() => _isLoading = true);
+    try {
+      final name = await _storage.read(key: 'auth_name');
+      final driverId = await _storage.read(key: 'auth_id');
+
+      if (name != null && name.isNotEmpty) {
+        setState(() {
+          _driverName = name;
+        });
+      }
+
+      if (driverId != null && driverId.isNotEmpty) {
+        final result = await _fineService.getFinesByDriver(driverId);
+        if (result['ok'] == true) {
+          final List<FineModel> fines = result['fines'] as List<FineModel>;
+
+          double outstanding = 0.0;
+          int pending = 0;
+          String vehicle = 'CAB-4821';
+
+          for (var fine in fines) {
+            if (fine.status == 'PENDING') {
+              outstanding += fine.amount;
+              pending++;
+            }
+            if (fine.vehicleNumber != null && fine.vehicleNumber!.isNotEmpty) {
+              vehicle = fine.vehicleNumber!;
+            }
+          }
+
+          // Sort recent fines by reference or creation (newest first)
+          fines.sort((a, b) => b.referenceNumber.compareTo(a.referenceNumber));
+
+          setState(() {
+            _outstandingFinesAmount = outstanding;
+            _pendingCount = pending;
+            _vehicleNumber = vehicle;
+            _recentFines = fines.take(5).toList(); // Show up to 5 recent activities
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading dashboard: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bgGrey,
-      body: Column(
-        children: [
-          _buildHeader(context),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.only(bottom: 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildQuickActions(context),
-                  const SizedBox(height: 24),
-                  _buildRecentActivity(context),
-                ],
+      body: RefreshIndicator(
+        onRefresh: _loadDashboardData,
+        color: AppColors.primaryMid,
+        child: Column(
+          children: [
+            _buildHeader(context),
+            Expanded(
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.only(bottom: 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildQuickActions(context),
+                    const SizedBox(height: 24),
+                    _buildRecentActivity(context),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -59,9 +138,9 @@ class HomeScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  const Text(
-                    'Kamal Perera',
-                    style: TextStyle(
+                  Text(
+                    _driverName,
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
@@ -85,18 +164,19 @@ class HomeScreen extends StatelessWidget {
                       size: 22,
                     ),
                   ),
-                  Positioned(
-                    right: 10,
-                    top: 10,
-                    child: Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
-                        color: AppColors.accentGold,
-                        shape: BoxShape.circle,
+                  if (_pendingCount > 0)
+                    Positioned(
+                      right: 10,
+                      top: 10,
+                      child: Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                          color: AppColors.accentGold,
+                          shape: BoxShape.circle,
+                        ),
                       ),
                     ),
-                  ),
                 ],
               ),
             ],
@@ -125,9 +205,9 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 8),
-                const Text(
-                  'LKR 0.00',
-                  style: TextStyle(
+                Text(
+                  'LKR ${_outstandingFinesAmount.toStringAsFixed(2)}',
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 32,
                     fontWeight: FontWeight.bold,
@@ -140,14 +220,16 @@ class HomeScreen extends StatelessWidget {
                     Container(
                       width: 8,
                       height: 8,
-                      decoration: const BoxDecoration(
-                        color: AppColors.successGreen,
+                      decoration: BoxDecoration(
+                        color: _pendingCount > 0 ? AppColors.accentGold : AppColors.successGreen,
                         shape: BoxShape.circle,
                       ),
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      'No pending fines · Vehicle: CAB-4821',
+                      _pendingCount > 0
+                          ? '$_pendingCount pending fine${_pendingCount > 1 ? 's' : ''} · Vehicle: $_vehicleNumber'
+                          : 'No pending fines · Vehicle: $_vehicleNumber',
                       style: TextStyle(
                         color: Colors.white.withOpacity(0.7),
                         fontSize: 12,
@@ -188,11 +270,9 @@ class HomeScreen extends StatelessWidget {
                   title: 'Pay Fine',
                   subtitle: 'Settle on-the-spot',
                   onTap: () {
-                    // Navigate to Pay Fine tab handled by parent MainScreen
-                    // For now navigate to FineDetailsScreen as demo
                     Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const FineDetailsScreen()),
-                    );
+                      MaterialPageRoute(builder: (_) => const FineSearchScreen()),
+                    ).then((_) => _loadDashboardData());
                   },
                 ),
               ),
@@ -200,9 +280,9 @@ class HomeScreen extends StatelessWidget {
               Expanded(
                 child: _QuickActionCard(
                   icon: Icons.history_rounded,
-                  title: 'History',
-                  subtitle: 'Past payments',
-                  onTap: () {},
+                  title: 'Refresh',
+                  subtitle: 'Get latest updates',
+                  onTap: _loadDashboardData,
                 ),
               ),
             ],
@@ -214,30 +294,6 @@ class HomeScreen extends StatelessWidget {
 
   // ── Recent Activity ───────────────────────────────────────────────────────
   Widget _buildRecentActivity(BuildContext context) {
-    final recentItems = [
-      _ActivityItem(
-        title: 'Mobile Phone',
-        reference: 'TF-2024-007723',
-        date: '12 Jun 2024',
-        amount: 'LKR 3,000',
-        status: 'Paid',
-      ),
-      _ActivityItem(
-        title: 'Red Light',
-        reference: 'TF-2024-003341',
-        date: '11 Jun 2024',
-        amount: 'LKR 3,000',
-        status: 'Paid',
-      ),
-      _ActivityItem(
-        title: 'Speeding (21–40 km/h)',
-        reference: 'TF-2024-001892',
-        date: '10 Jun 2024',
-        amount: 'LKR 5,000',
-        status: 'Paid',
-      ),
-    ];
-
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
@@ -256,9 +312,9 @@ class HomeScreen extends StatelessWidget {
                 ),
               ),
               GestureDetector(
-                onTap: () {},
+                onTap: _loadDashboardData,
                 child: const Text(
-                  'See all',
+                  'Refresh list',
                   style: TextStyle(
                     color: AppColors.primaryMid,
                     fontSize: 13,
@@ -269,7 +325,31 @@ class HomeScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          ...recentItems.map((item) => _ActivityCard(item: item)),
+          if (_isLoading)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else if (_recentFines.isEmpty)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 36),
+                child: Column(
+                  children: [
+                    Icon(Icons.assignment_turned_in_outlined, size: 48, color: AppColors.textGrey.withOpacity(0.5)),
+                    const SizedBox(height: 12),
+                    Text(
+                      'No recent fines found',
+                      style: TextStyle(color: AppColors.textGrey.withOpacity(0.8), fontSize: 14, fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            ..._recentFines.map((fine) => _ActivityCard(fine: fine, onRefresh: _loadDashboardData)),
         ],
       ),
     );
@@ -343,113 +423,105 @@ class _QuickActionCard extends StatelessWidget {
   }
 }
 
-// ── Activity Data Model ───────────────────────────────────────────────────
-class _ActivityItem {
-  final String title;
-  final String reference;
-  final String date;
-  final String amount;
-  final String status;
-
-  _ActivityItem({
-    required this.title,
-    required this.reference,
-    required this.date,
-    required this.amount,
-    required this.status,
-  });
-}
-
 // ── Activity Card ─────────────────────────────────────────────────────────
 class _ActivityCard extends StatelessWidget {
-  final _ActivityItem item;
+  final FineModel fine;
+  final VoidCallback onRefresh;
 
-  const _ActivityCard({required this.item});
+  const _ActivityCard({required this.fine, required this.onRefresh});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          // Green check icon
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: AppColors.successGreenLight,
-              shape: BoxShape.circle,
+    final isPaid = fine.status == 'PAID';
+    return GestureDetector(
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => FineDetailsScreen(fine: fine)),
+        ).then((_) => onRefresh());
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
             ),
-            child: const Icon(
-              Icons.check_circle_outline_rounded,
-              color: AppColors.successGreen,
-              size: 22,
+          ],
+        ),
+        child: Row(
+          children: [
+            // Status Icon
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: isPaid ? AppColors.successGreenLight : AppColors.warningYellow.withOpacity(0.2),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                isPaid ? Icons.check_circle_outline_rounded : Icons.pending_actions_rounded,
+                color: isPaid ? AppColors.successGreen : AppColors.accentGold,
+                size: 22,
+              ),
             ),
-          ),
-          const SizedBox(width: 12),
-          // Details
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            const SizedBox(width: 12),
+            // Details
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    fine.description ?? fine.categoryId,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.textDark,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    fine.referenceNumber,
+                    style: const TextStyle(
+                      color: AppColors.textGrey,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            // Amount + status
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  item.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppColors.textDark,
+                  'LKR ${fine.amount.toStringAsFixed(0)}',
+                  style: TextStyle(
+                    color: isPaid ? AppColors.successGreen : AppColors.accentGold,
                     fontSize: 14,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 4),
                 Text(
-                  '${item.reference} · ${item.date}',
-                  style: const TextStyle(
-                    color: AppColors.textGrey,
-                    fontSize: 12,
+                  fine.status,
+                  style: TextStyle(
+                    color: isPaid ? AppColors.successGreen : AppColors.accentGold,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
             ),
-          ),
-          const SizedBox(width: 8),
-          // Amount + status
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                item.amount,
-                style: const TextStyle(
-                  color: AppColors.successGreen,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                item.status,
-                style: const TextStyle(
-                  color: AppColors.successGreen,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

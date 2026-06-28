@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/constants/app_colors.dart';
+import '../../models/fine_model.dart';
+import '../../services/payment_service.dart';
 import 'payment_success_screen.dart';
 
 class PaymentScreen extends StatefulWidget {
-  const PaymentScreen({super.key});
+  final FineModel fine;
+
+  const PaymentScreen({super.key, required this.fine});
 
   @override
   State<PaymentScreen> createState() => _PaymentScreenState();
@@ -56,12 +60,42 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   void _pay() {
+    final cardNumber = _cardNumberController.text.replaceAll(' ', '');
+    final cardHolder = _cardHolderController.text.trim();
+    final expiry = _expiryController.text.trim();
+    final cvv = _cvvController.text.trim();
+
+    if (cardNumber.length < 16 || cardHolder.isEmpty || expiry.length < 5 || cvv.length < 3) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please fill in all card details correctly')),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
-    Future.delayed(const Duration(seconds: 2), () {
+    PaymentService().payFine(
+      referenceNumber: widget.fine.referenceNumber,
+      categoryId: widget.fine.categoryId,
+      paymentMethod: 'CARD',
+      transactionReference: 'CARD-${cardNumber.substring(cardNumber.length - 4)}',
+    ).then((resp) {
       if (!mounted) return;
       setState(() => _isLoading = false);
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const PaymentSuccessScreen()),
+      if (resp['ok'] == true) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const PaymentSuccessScreen()),
+        );
+      } else {
+        final msg = resp['message'] ?? 'Payment failed';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), backgroundColor: Colors.red.shade700),
+        );
+      }
+    }).catchError((err) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Payment error: $err')),
       );
     });
   }
@@ -159,21 +193,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              'TF-2024-001892',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
+            Text(
+              widget.fine.referenceNumber,
+              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
             ),
-            const Text(
-              'LKR 5,000',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+            Text(
+              'LKR ${widget.fine.amount.toStringAsFixed(0)}',
+              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -507,9 +533,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 height: 22,
                 child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
               )
-            : const Text(
-                'Pay LKR 5,000',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+            : Text(
+                'Pay LKR ${widget.fine.amount.toStringAsFixed(0)}',
+                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
               ),
       ),
     );

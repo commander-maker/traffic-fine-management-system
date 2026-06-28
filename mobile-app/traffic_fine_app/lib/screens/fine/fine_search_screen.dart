@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
+import '../../models/fine_model.dart';
+import '../../services/fine_service.dart';
 import '../fine/fine_details_screen.dart';
 
 class FineSearchScreen extends StatefulWidget {
@@ -37,7 +39,8 @@ class _FineSearchScreenState extends State<FineSearchScreen> {
   }
 
   void _findFine() {
-    if (_referenceController.text.trim().isEmpty) {
+    final ref = _referenceController.text.trim();
+    if (ref.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please enter a fine reference number'),
@@ -47,11 +50,25 @@ class _FineSearchScreenState extends State<FineSearchScreen> {
       return;
     }
     setState(() => _isLoading = true);
-    Future.delayed(const Duration(seconds: 1), () {
+    FineService().searchFine(ref).then((result) {
       if (!mounted) return;
       setState(() => _isLoading = false);
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const FineDetailsScreen()),
+      if (result['ok'] == true) {
+        final fine = result['fine'] as FineModel;
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => FineDetailsScreen(fine: fine)),
+        );
+      } else {
+        final msg = result['message'] ?? 'Fine not found';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), backgroundColor: Colors.red.shade700),
+        );
+      }
+    }).catchError((err) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $err')),
       );
     });
   }

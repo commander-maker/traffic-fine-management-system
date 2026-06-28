@@ -67,6 +67,8 @@ public class SecurityConfig {
 
             // Authorization rules
             .authorizeHttpRequests(auth -> auth
+                // Allow H2 console (useful for dev profile)
+                .requestMatchers("/h2-console/**", "/api/h2-console/**", "/h2-console", "/api/h2-console").permitAll()
                 .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
                 .requestMatchers(HttpMethod.POST, "/fines").hasRole("OFFICER")
                 .requestMatchers(HttpMethod.GET, "/fines/**").hasAnyRole("OFFICER", "ADMIN", "DRIVER")
@@ -80,6 +82,9 @@ public class SecurityConfig {
 
             // JWT filter runs before Spring Security's UsernamePasswordAuthenticationFilter
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+
+        // H2 console uses frames — allow same-origin frames so console renders correctly
+        http.headers(headers -> headers.frameOptions().sameOrigin());
 
         return http.build();
     }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
 import '../main_screen.dart';
 import 'register_screen.dart';
+import '../../services/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -25,12 +26,22 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _login() {
     setState(() => _isLoading = true);
-    Future.delayed(const Duration(milliseconds: 800), () {
+    final auth = AuthService();
+    auth.login(_userController.text.trim(), _passwordController.text).then((resp) {
       if (!mounted) return;
       setState(() => _isLoading = false);
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const MainScreen()),
-      );
+      if (resp['ok'] == true) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const MainScreen()),
+        );
+      } else {
+        final msg = resp['message'] ?? 'Login failed';
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      }
+    }).catchError((err) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Login error: $err')));
     });
   }
 
@@ -74,13 +85,14 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 40),
 
-              // NIC / License Field
-              _buildLabel('NIC or License Number'),
+              // Email Field
+              _buildLabel('Email Address'),
               const SizedBox(height: 8),
               _buildInputField(
                 controller: _userController,
-                hint: 'e.g. 199012345678',
-                icon: Icons.person_outline_rounded,
+                hint: 'e.g. user@example.com',
+                icon: Icons.email_outlined,
+                keyboardType: TextInputType.emailAddress,
               ),
               const SizedBox(height: 20),
 
@@ -180,9 +192,11 @@ class _LoginScreenState extends State<LoginScreen> {
     required TextEditingController controller,
     required String hint,
     required IconData icon,
+    TextInputType? keyboardType,
   }) {
     return TextField(
       controller: controller,
+      keyboardType: keyboardType,
       style: const TextStyle(color: Colors.white, fontSize: 15),
       decoration: InputDecoration(
         hintText: hint,
